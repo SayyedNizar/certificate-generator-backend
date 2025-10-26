@@ -1,0 +1,11 @@
+package com.example.local_project.Config;
+
+import org.springframework.context.annotation.Configuration;
+import org.springframework.scheduling.annotation.EnableAsync;
+
+@Configuration
+@EnableAsync
+public class AsyncConfig {
+
+    
+}

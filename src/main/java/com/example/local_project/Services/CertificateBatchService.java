@@ -1,0 +1,131 @@
+package com.example.local_project.Services;
+
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.UUID;
+
+import org.apache.commons.csv.CSVFormat;
+import org.apache.commons.csv.CSVParser;
+import org.apache.commons.csv.CSVRecord;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.scheduling.annotation.Async;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
+
+import com.example.local_project.Entity.BatchStatus;
+import com.example.local_project.Entity.CertificateBatch;
+import com.example.local_project.Entity.CertificateTemplates;
+import com.example.local_project.Entity.Certificates;
+import com.example.local_project.Entity.Courses;
+import com.example.local_project.Entity.Institutions;
+import com.example.local_project.Entity.Users;
+import com.example.local_project.Repository.CertificateBatchRepo;
+import com.example.local_project.Repository.CertificateRepo;
+import com.example.local_project.Repository.CertificateTemplatesRepo;
+import com.example.local_project.Repository.CourseRepo;
+import com.example.local_project.Repository.InstitutionsRepo;
+import com.example.local_project.Repository.UsersRepo;
+// ---------------------------------
+
+@Service
+public class CertificateBatchService {
+
+    @Autowired private CertificateBatchRepo batchRepo;
+    @Autowired private UsersRepo userRepo;
+    @Autowired private CertificateRepo certificateRepo;
+    @Autowired private CourseRepo courseRepo;
+    @Autowired private CertificateTemplatesRepo templateRepo;
+    @Autowired private InstitutionsRepo institutionRepo;
+    
+    @Autowired private EmailService emailService; 
+
+    @Transactional // This method should be transactional
+    public CertificateBatch startBatchProcess(MultipartFile file, Long courseId, Long templateId, Long institutionId, Long requestedByUserId) {
+        Courses course = courseRepo.findById(courseId).orElseThrow(() -> new RuntimeException("Course not found"));
+        CertificateTemplates template = templateRepo.findById(templateId).orElseThrow(() -> new RuntimeException("Template not found"));
+        Institutions institution = institutionRepo.findById(institutionId).orElseThrow(() -> new RuntimeException("Institution not found"));
+        Users requestedBy = userRepo.findById(requestedByUserId).orElseThrow(() -> new RuntimeException("Requesting user not found"));
+
+        CertificateBatch batch = new CertificateBatch();
+        batch.setCourse(course);
+        batch.setTemplate(template);
+        batch.setInstitution(institution);
+        batch.setRequestedBy(requestedBy);
+        batch.setStatus(BatchStatus.PENDING);
+        batch.setRequestTimestamp(LocalDateTime.now());
+        CertificateBatch savedBatch = batchRepo.save(batch);
+
+        processFileInBackground(file, savedBatch.getBatchId()); // Pass the ID instead of the object
+
+        return savedBatch;
+    }
+
+    @Async
+    @Transactional // The async method should also manage its own transaction
+    public void processFileInBackground(MultipartFile file, Long batchId) { // Accept the ID
+        
+        // --- 2. RELOAD THE BATCH OBJECT IN THE NEW THREAD ---
+        // This is a much safer way to handle asynchronous entities.
+        CertificateBatch batch = batchRepo.findById(batchId)
+                .orElseThrow(() -> new RuntimeException("Batch not found"));
+
+        batch.setStatus(BatchStatus.PROCESSING);
+        batchRepo.save(batch);
+
+        int successCount = 0;
+        int failureCount = 0;
+
+        // We re-fetch the entities inside the new transaction to avoid Lazy Loading issues
+        Courses course = courseRepo.findById(batch.getCourse().getCourseId()).get();
+        CertificateTemplates template = templateRepo.findById(batch.getTemplate().getTemplateId()).get();
+        Institutions institution = institutionRepo.findById(batch.getInstitution().getInstitutionId()).get();
+
+        try (BufferedReader fileReader = new BufferedReader(new InputStreamReader(file.getInputStream(), StandardCharsets.UTF_8))) {
+            CSVParser csvParser = new CSVParser(fileReader, CSVFormat.DEFAULT.withFirstRecordAsHeader().withIgnoreHeaderCase().withTrim());
+
+            for (CSVRecord csvRecord : csvParser) {
+                String userEmail = csvRecord.get("email");
+                Users user = userRepo.findByEmail(userEmail).orElse(null);
+
+                if (user != null) {
+                    Certificates newCert = new Certificates();
+                    newCert.setUser(user);
+                    newCert.setCourse(course);
+                    newCert.setCertificateTemplate(template);
+                    newCert.setInstitution(institution);
+                    newCert.setDateOfIssue(LocalDate.now());
+                    newCert.setCertificateNumber(UUID.randomUUID().toString());
+                    
+                    Certificates savedCert = certificateRepo.save(newCert);
+                    successCount++;
+
+                    emailService.sendCertificateNotification(
+                        user.getEmail(),
+                        user.getName(),
+                        course.getCourseName(),
+                        savedCert.getCertificateId()
+                    );
+                } else {
+                    System.err.println("User not found for email: " + userEmail);
+                    failureCount++;
+                }
+            }
+        } catch (Exception e) {
+            batch.setStatus(BatchStatus.FAILED);
+            batchRepo.save(batch);
+            e.printStackTrace();
+            return;
+        }
+
+        batch.setStatus(BatchStatus.COMPLETED);
+        batch.setCompletionTimestamp(LocalDateTime.now());
+        batch.setSuccessfulRecords(successCount);
+        batch.setFailedRecords(failureCount);
+        batchRepo.save(batch);
+    }
+}
+
