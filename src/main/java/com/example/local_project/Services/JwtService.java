@@ -5,8 +5,9 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.function.Function;
+import java.util.function.Function; // 1. Import @Value
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Service;
 
@@ -18,7 +19,11 @@ import io.jsonwebtoken.security.Keys;
 
 @Service
 public class JwtService {
-    public static final String SECRET = "5367566B59703373367639792F423F4528482B4D6251655468576D5A71347437";
+
+    // 2. Read the secret from application.properties
+    // This removes the hardcoded key from your code.
+    @Value("${JWT_SECRET_KEY}")
+    private String SECRET;
 
     public String extractUsername(String token) {
         return extractClaim(token, Claims::getSubject);
@@ -51,23 +56,27 @@ public class JwtService {
         return (username.equals(userDetails.getUsername()) && !isTokenExpired(token));
     }
 
-   public String generateToken(String userName, List<String> roles, Long userId) { // 1. Accept userId
+    // This method is already correct
+    public String generateToken(String userName, List<String> roles, Long userId) {
         Map<String, Object> claims = new HashMap<>();
         claims.put("roles", roles);
-        claims.put("userId", userId); // 2. Add userId to the token's claims
+        claims.put("userId", userId);
         return createToken(claims, userName);
     }
+    
     private String createToken(Map<String, Object> claims, String userName) {
         return Jwts.builder()
-                .setClaims(claims) // This will now include the roles
+                .setClaims(claims)
                 .setSubject(userName)
                 .setIssuedAt(new Date(System.currentTimeMillis()))
                 .setExpiration(new Date(System.currentTimeMillis() + 1000 * 60 * 30)) // 30 min validity
                 .signWith(getSignKey(), SignatureAlgorithm.HS256).compact();
     }
 
+    // 3. This method now correctly uses the non-static, injected SECRET field
     private Key getSignKey() {
-        byte[] keyBytes= Decoders.BASE64.decode(SECRET);
+        byte[] keyBytes = Decoders.BASE64.decode(SECRET);
         return Keys.hmacShaKeyFor(keyBytes);
     }
 }
+
