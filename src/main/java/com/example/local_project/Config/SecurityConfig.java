@@ -1,4 +1,4 @@
-package com.example.local_project.Config;
+package com.example.local_project.config;
 
 import java.util.List;
 
@@ -23,7 +23,7 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
-import com.example.local_project.Services.CustomUserDetailsService;
+import com.example.local_project.Services.CustomUserDetailsService; // Make sure this is imported
 import com.example.local_project.filter.JwtAuthFilter;
 
 @Configuration
@@ -47,17 +47,9 @@ public class SecurityConfig {
         return http.csrf(csrf -> csrf.disable())
                 .cors(withDefaults())
                 .authorizeHttpRequests(auth -> auth
-                        // 1. Allow all preflight OPTIONS requests for CORS
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-                        // 2. Allow all requests to authentication endpoints
                         .requestMatchers("/api/auth/**").permitAll()
-                        
-                        // --- THIS IS THE FIX ---
-                        // 3. Explicitly allow public GET requests to the courses list
                         .requestMatchers(HttpMethod.GET, "/api/courses").permitAll()
-                        // -----------------------
-
-                        // 4. Secure all other requests
                         .anyRequest().authenticated()
                 )
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
@@ -69,7 +61,15 @@ public class SecurityConfig {
     @Bean
     CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOrigins(List.of("http://localhost:5173"));
+        
+        // --- THIS IS THE FIX ---
+        // We are adding your live Vercel URL to the list of allowed origins.
+        configuration.setAllowedOrigins(List.of(
+            "http://localhost:5173", 
+            "https://certificate-generator-frontend-opal.vercel.app"
+        ));
+        // -----------------------
+        
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(List.of("Authorization", "Content-Type"));
         
@@ -91,4 +91,3 @@ public class SecurityConfig {
         return config.getAuthenticationManager();
     }
 }
-
