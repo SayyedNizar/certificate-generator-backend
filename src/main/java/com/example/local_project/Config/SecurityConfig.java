@@ -1,4 +1,4 @@
-package com.example.local_project.config;
+package com.example.local_project.Config;
 
 import java.util.List;
 
