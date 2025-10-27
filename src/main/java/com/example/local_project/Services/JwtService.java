@@ -5,7 +5,7 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.function.Function; // 1. Import @Value
+import java.util.function.Function; // <-- 1. Add this import
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -21,9 +21,8 @@ import io.jsonwebtoken.security.Keys;
 public class JwtService {
 
     // 2. Read the secret from application.properties
-    // This removes the hardcoded key from your code.
     @Value("${JWT_SECRET_KEY}")
-    private String SECRET;
+    private String SECRET; // 3. Make this non-static
 
     public String extractUsername(String token) {
         return extractClaim(token, Claims::getSubject);
@@ -55,25 +54,24 @@ public class JwtService {
         final String username = extractUsername(token);
         return (username.equals(userDetails.getUsername()) && !isTokenExpired(token));
     }
-
-    // This method is already correct
+    
     public String generateToken(String userName, List<String> roles, Long userId) {
         Map<String, Object> claims = new HashMap<>();
         claims.put("roles", roles);
         claims.put("userId", userId);
         return createToken(claims, userName);
     }
-    
+
     private String createToken(Map<String, Object> claims, String userName) {
         return Jwts.builder()
                 .setClaims(claims)
                 .setSubject(userName)
                 .setIssuedAt(new Date(System.currentTimeMillis()))
-                .setExpiration(new Date(System.currentTimeMillis() + 1000 * 60 * 30)) // 30 min validity
+                .setExpiration(new Date(System.currentTimeMillis() + 1000 * 60 * 30)) 
                 .signWith(getSignKey(), SignatureAlgorithm.HS256).compact();
     }
 
-    // 3. This method now correctly uses the non-static, injected SECRET field
+    // 4. This method now correctly uses the non-static SECRET field
     private Key getSignKey() {
         byte[] keyBytes = Decoders.BASE64.decode(SECRET);
         return Keys.hmacShaKeyFor(keyBytes);

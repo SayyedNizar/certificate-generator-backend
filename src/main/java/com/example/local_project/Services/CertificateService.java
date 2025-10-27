@@ -83,7 +83,7 @@ public class CertificateService {
         Paragraph studentName = new Paragraph(certificate.getUser().getName())
                 .setFontSize(48)
                 .setTextAlignment(TextAlignment.CENTER)
-                .setFixedPosition(0, 290, pdfDoc.getDefaultPageSize().getWidth());
+                .setFixedPosition(0, 275, pdfDoc.getDefaultPageSize().getWidth());
 
         Paragraph courseName = new Paragraph(certificate.getCourse().getCourseName())
                 .setFontSize(18)
