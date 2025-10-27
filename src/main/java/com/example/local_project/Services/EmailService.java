@@ -1,6 +1,7 @@
 package com.example.local_project.Services;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value; // 1. Import Value
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
@@ -14,30 +15,26 @@ public class EmailService {
     @Autowired
     private JavaMailSender mailSender;
 
-    /**
-     * Sends a certificate notification email to a student.
-     * @param toEmail The student's email address.
-     * @param studentName The student's name.
-     * @param courseName The name of the course they completed.
-     * @param certificateId The ID of the certificate to create a download link.
-     */
+    // 2. Inject the new variable from application.properties
+    @Value("${FRONTEND_URL}")
+    private String frontendUrl;
+
     public void sendCertificateNotification(String toEmail, String studentName, String courseName, Long certificateId) {
         try {
             MimeMessage message = mailSender.createMimeMessage();
-            MimeMessageHelper helper = new MimeMessageHelper(message, true); // true = multipart message
+            MimeMessageHelper helper = new MimeMessageHelper(message, true);
 
             helper.setTo(toEmail);
             helper.setSubject("Congratulations! You've earned a new certificate!");
             
-            // Build the email body with HTML for a nice link
-            String frontendUrl = "http://localhost:5173"; // Your frontend's URL
+            // 3. Use the injected variable to build the link
             String downloadLink = frontendUrl + "/student-dashboard"; // Direct link to their dashboard
             
             String htmlBody = "<html>"
                             + "<body>"
                             + "<h3>Congratulations, " + studentName + "!</h3>"
                             + "<p>You have successfully completed the course: <strong>" + courseName + "</strong>.</p>"
-                            + "<p>Your new certificate is now available in your dashboard. Click the link below to view and download it.</p>"
+                            + "<p>Your new certificate is now available on your CertifyMe dashboard. Click the link below to log in and view it.</p>"
                             + "<br>"
                             + "<a href=\"" + downloadLink + "\" "
                             + "   style=\"background-color: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;\""
@@ -47,13 +44,13 @@ public class EmailService {
                             + "</body>"
                             + "</html>";
 
-            helper.setText(htmlBody, true); // true = this is HTML
+            helper.setText(htmlBody, true);
             
             mailSender.send(message);
             
         } catch (MessagingException e) {
-            // In a real app, you'd have more robust error logging here
             System.err.println("Failed to send email to " + toEmail + ": " + e.getMessage());
         }
     }
 }
+
