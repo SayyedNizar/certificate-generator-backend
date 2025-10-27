@@ -29,7 +29,6 @@ import com.example.local_project.Repository.CertificateTemplatesRepo;
 import com.example.local_project.Repository.CourseRepo;
 import com.example.local_project.Repository.InstitutionsRepo;
 import com.example.local_project.Repository.UsersRepo;
-// ---------------------------------
 
 @Service
 public class CertificateBatchService {
@@ -43,7 +42,7 @@ public class CertificateBatchService {
     
     @Autowired private EmailService emailService; 
 
-    @Transactional // This method should be transactional
+    @Transactional
     public CertificateBatch startBatchProcess(MultipartFile file, Long courseId, Long templateId, Long institutionId, Long requestedByUserId) {
         Courses course = courseRepo.findById(courseId).orElseThrow(() -> new RuntimeException("Course not found"));
         CertificateTemplates template = templateRepo.findById(templateId).orElseThrow(() -> new RuntimeException("Template not found"));
@@ -59,17 +58,15 @@ public class CertificateBatchService {
         batch.setRequestTimestamp(LocalDateTime.now());
         CertificateBatch savedBatch = batchRepo.save(batch);
 
-        processFileInBackground(file, savedBatch.getBatchId()); // Pass the ID instead of the object
+        processFileInBackground(file, savedBatch.getBatchId());
 
         return savedBatch;
     }
 
     @Async
-    @Transactional // The async method should also manage its own transaction
-    public void processFileInBackground(MultipartFile file, Long batchId) { // Accept the ID
+    @Transactional
+    public void processFileInBackground(MultipartFile file, Long batchId) { 
         
-        // --- 2. RELOAD THE BATCH OBJECT IN THE NEW THREAD ---
-        // This is a much safer way to handle asynchronous entities.
         CertificateBatch batch = batchRepo.findById(batchId)
                 .orElseThrow(() -> new RuntimeException("Batch not found"));
 
@@ -79,7 +76,6 @@ public class CertificateBatchService {
         int successCount = 0;
         int failureCount = 0;
 
-        // We re-fetch the entities inside the new transaction to avoid Lazy Loading issues
         Courses course = courseRepo.findById(batch.getCourse().getCourseId()).get();
         CertificateTemplates template = templateRepo.findById(batch.getTemplate().getTemplateId()).get();
         Institutions institution = institutionRepo.findById(batch.getInstitution().getInstitutionId()).get();
@@ -103,24 +99,36 @@ public class CertificateBatchService {
                     Certificates savedCert = certificateRepo.save(newCert);
                     successCount++;
 
-                    emailService.sendCertificateNotification(
-                        user.getEmail(),
-                        user.getName(),
-                        course.getCourseName(),
-                        savedCert.getCertificateId()
-                    );
+                    // --- THIS IS THE FIX ---
+                    // We wrap the email sending in its own try-catch block.
+                    // If it fails, it will print an error but will NOT crash the whole batch.
+                    try {
+                        emailService.sendCertificateNotification(
+                            user.getEmail(),
+                            user.getName(),
+                            course.getCourseName(),
+                            savedCert.getCertificateId()
+                        );
+                    } catch (Exception emailException) {
+                        System.err.println("EMAIL FAILED for user " + user.getEmail() + ": " + emailException.getMessage());
+                        // We don't increment failureCount here because the certificate *was* created.
+                    }
+                    // -----------------------
+
                 } else {
                     System.err.println("User not found for email: " + userEmail);
                     failureCount++;
                 }
             }
         } catch (Exception e) {
+            // This 'catch' will now only catch critical errors, like a bad CSV file.
             batch.setStatus(BatchStatus.FAILED);
             batchRepo.save(batch);
             e.printStackTrace();
             return;
         }
 
+        // The batch will now complete successfully, even if some emails failed.
         batch.setStatus(BatchStatus.COMPLETED);
         batch.setCompletionTimestamp(LocalDateTime.now());
         batch.setSuccessfulRecords(successCount);
