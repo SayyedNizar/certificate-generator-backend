@@ -101,7 +101,7 @@ public class CertificateBatchService {
 
                     // --- THIS IS THE FIX ---
                     // We wrap the email sending in its own try-catch block.
-                    // If it fails, it will print an error but will NOT crash the whole batch.
+                    // If one email fails, it will print an error but will NOT crash the whole batch.
                     try {
                         emailService.sendCertificateNotification(
                             user.getEmail(),
